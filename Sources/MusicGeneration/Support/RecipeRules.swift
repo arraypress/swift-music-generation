@@ -29,8 +29,10 @@ public enum RecipeRules {
     /// `request` with `field` (a JSON key, or `request.`-prefixed) set from text as typed.
     /// An empty value clears an optional field or restores a required one's default.
     public static func set(_ field: String, _ value: String, in request: SongRequest) throws(RecipeError) -> SongRequest {
-        let name = field.hasPrefix("request.") ? String(field.dropFirst("request.".count)) : field
-        guard requestFields.contains(name) else {
+        var name = field.hasPrefix("request.") ? String(field.dropFirst("request.".count)) : field
+        if !name.hasPrefix("yue."), YuE2Options.fieldNames.contains(name), !requestFields.contains(name) { name = "yue." + name }
+        if name.hasPrefix("yue.") { return try setYuE(String(name.dropFirst(4)), value, in: request) }
+        guard requestFields.contains(name), name != "yue" else {
             throw RecipeError("\(field) is not a request field (\(requestFields.joined(separator: ", ")))")
         }
         var object: [String: Any]
@@ -50,6 +52,41 @@ public enum RecipeRules {
             throw RecipeError("\(name) is not a value it can hold\(context.debugDescription.isEmpty ? "" : ": \(context.debugDescription)")")
         } catch {
             throw RecipeError("\(name) cannot be \(value): \(kindHint(name))")
+        }
+    }
+
+    /// A field of the request's `yue` settings.
+    static func setYuE(_ name: String, _ value: String, in request: SongRequest) throws(RecipeError) -> SongRequest {
+        guard YuE2Options.fieldNames.contains(name) else {
+            throw RecipeError("yue.\(name) is not a YuE2 field (\(YuE2Options.fieldNames.map { "yue." + $0 }.joined(separator: ", ")))")
+        }
+        var object: [String: Any]
+        do {
+            object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request.yue ?? YuE2Options())) as? [String: Any] ?? [:]
+        } catch { throw RecipeError("cannot read the YuE2 settings: \(error.localizedDescription)") }
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { object.removeValue(forKey: name) } else { object[name] = try typedYuE(text, for: name) }
+        var r = request
+        do {
+            r.yue = try JSONDecoder().decode(YuE2Options.self, from: JSONSerialization.data(withJSONObject: object))
+        } catch {
+            let choices = name == "planning" ? YuE2Planning.allCases.map(\.rawValue).joined(separator: ", ")
+                : name == "decoder" ? YuE2Decoder.allCases.map(\.rawValue).joined(separator: " or ") : "see `song recipe --help`"
+            throw RecipeError("yue.\(name) cannot be \(value): \(choices)")
+        }
+        return r
+    }
+
+    static func typedYuE(_ text: String, for name: String) throws(RecipeError) -> Any {
+        switch name {
+        case "planning", "decoder", "score": return text
+        case "abc_top_k", "abc_penalty_window", "abc_min_tokens", "abc_max_tokens", "semantic_top_k",
+             "semantic_penalty_window", "semantic_min_tokens", "semantic_max_tokens", "ode_steps", "decoder_tile_frames":
+            guard let n = Int(text) else { throw RecipeError("yue.\(name) is a whole number; not \(text)") }
+            return n
+        default:
+            guard let n = Double(text), n.isFinite else { throw RecipeError("yue.\(name) is a number; not \(text)") }
+            return n
         }
     }
 
@@ -112,6 +149,7 @@ public enum RecipeRules {
         case "task": SongTask.allCases.map(\.rawValue).joined(separator: ", ")
         case "chunk_mask_mode": ChunkMaskMode.allCases.map(\.rawValue).joined(separator: " or ")
         case "repaint_mode": RepaintMode.allCases.map(\.rawValue).joined(separator: ", ")
+        case "engine": SongEngine.allCases.map(\.rawValue).joined(separator: " or ")
         default: "see `song recipe --help`"
         }
     }
@@ -141,12 +179,14 @@ public enum RecipeRules {
             ("model", SongRecipe.ModelRef.CodingKeys.allCases.map(\.rawValue)),
             ("style", SongRecipe.StyleRef.CodingKeys.allCases.map(\.rawValue)),
             ("request", SongRequest.fieldNames),
+            ("request.yue", YuE2Options.fieldNames),
             ("output", SongRecipe.Output.CodingKeys.allCases.map(\.rawValue)),
-            ("plan", ["bpm", "caption", "duration", "key", "language", "time_signature"]),
+            ("plan", ["bpm", "caption", "duration", "key", "language", "score", "time_signature"]),
             ("provenance", SongRecipe.Provenance.CodingKeys.allCases.map(\.rawValue)),
         ]
         for (name, keys) in sections {
-            guard let value = root[name], !(value is NSNull) else { continue }
+            let value: Any? = name == "request.yue" ? (root["request"] as? [String: Any])?["yue"] : root[name]
+            guard let value, !(value is NSNull) else { continue }
             guard let section = value as? [String: Any] else { throw RecipeError("\"\(name)\" is not an object") }
             try unknown(section, keys, name + ".")
         }

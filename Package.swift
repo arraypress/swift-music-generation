@@ -13,6 +13,10 @@ let package = Package(
         // ACE-Step 1.5 turbo (MIT) on MLX: the 5 Hz planner LM, the DiT with
         // its lyric and timbre encoders, and the Oobleck VAE.
         .library(name: "ACEStepMusic", targets: ["ACEStepMusic"]),
+        // YuE2-3B (weights CC BY-NC 4.0 + an individual-creator permission; companies need a licence) on MLX: score planning,
+        // 25 Hz song tokens and flow-matched latents. Opt-in: the engine
+        // refuses to start until its licence version is named.
+        .library(name: "YuE2Music", targets: ["YuE2Music"]),
     ],
     dependencies: [
         // 0.32: the Python reference runs mlx 0.32.3; swift-tts measured layer drift on 0.31.6.
@@ -23,10 +27,19 @@ let package = Package(
     ],
     targets: [
         .target(name: "MusicGeneration"),
+        // Networks the engines share (the Oobleck VAE), package-internal.
+        .target(
+            name: "MusicNetworks",
+            dependencies: [
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXNN", package: "mlx-swift"),
+                .product(name: "MLXRandom", package: "mlx-swift"),
+            ]
+        ),
         .target(
             name: "ACEStepMusic",
             dependencies: [
-                "MusicGeneration",
+                "MusicGeneration", "MusicNetworks",
                 .product(name: "MLX", package: "mlx-swift"),
                 .product(name: "MLXNN", package: "mlx-swift"),
                 .product(name: "MLXRandom", package: "mlx-swift"),
@@ -36,6 +49,26 @@ let package = Package(
                 .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "Hub", package: "swift-transformers"),
             ]
+        ),
+        .target(
+            name: "YuE2Music",
+            dependencies: [
+                "MusicGeneration", "MusicNetworks",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXNN", package: "mlx-swift"),
+                .product(name: "MLXRandom", package: "mlx-swift"),
+                .product(name: "MLXFast", package: "mlx-swift"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+            ]
+        ),
+        .testTarget(
+            name: "YuE2MusicTests",
+            dependencies: [
+                "YuE2Music", "MusicGeneration",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXRandom", package: "mlx-swift"),
+            ],
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(name: "MusicGenerationTests", dependencies: ["MusicGeneration"]),
         .testTarget(

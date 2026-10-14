@@ -22,6 +22,7 @@
 
 import Foundation
 import MLX
+import MusicNetworks
 import MLXRandom
 import MusicGeneration
 
@@ -267,28 +268,10 @@ final class ACEStepPipeline {
         return (0..<channels).map { planar[$0].asArray(Float.self) }
     }
 
-    /// Peak above 1 scaled to 1; then peak-normalised to `db` when asked; then fades.
+    /// ``SongFinishing/finish(_:sampleRate:normalize:db:fadeIn:fadeOut:)`` at this engine's rate.
     static func finish(_ channels: [[Float]], normalize: Bool, db: Double, fadeIn: Double, fadeOut: Double) -> [[Float]] {
-        var channels = channels
-        var peak = channels.map { $0.map(abs).max() ?? 0 }.max() ?? 0
-        if peak > 1 {
-            channels = channels.map { $0.map { $0 / peak } }
-            peak = 1
-        }
-        if normalize && db <= 0 && peak > 1e-6 {
-            let gain = Float(pow(10, db / 20)) / peak
-            channels = channels.map { $0.map { $0 * gain } }
-        }
-        let count = channels.first?.count ?? 0
-        let inFrames = min(count, Int(fadeIn * Double(sampleRate)))
-        let outFrames = min(count, Int(fadeOut * Double(sampleRate)))
-        // torch.linspace ramps: 0 … 1 over the first frames, 1 … 0 over the last.
-        func ramp(_ i: Int, _ n: Int) -> Float { n == 1 ? 0 : Float(i) / Float(n - 1) }
-        for c in channels.indices {
-            for i in 0..<inFrames { channels[c][i] *= ramp(i, inFrames) }
-            for i in 0..<outFrames { channels[c][count - outFrames + i] *= 1 - ramp(i, outFrames) }
-        }
-        return channels
+        SongFinishing.finish(channels, sampleRate: Double(sampleRate), normalize: normalize, db: db, fadeIn: fadeIn,
+                             fadeOut: fadeOut)
     }
 }
 

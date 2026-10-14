@@ -58,16 +58,19 @@ public struct SongRecipe: Codable, Sendable, Equatable {
         /// A LoRA adapter folded into the DiT: its folder (relative to the recipe when inside it).
         public var lora: String?
         public var loraScale: Double?
+        /// YuE2: the decoder's repository and revision (`m-a-p/YuE2-Vae@152733a…`).
+        public var decoder: String?
         public init(repository: String, revision: String, precision: String? = nil, lora: String? = nil,
-                    loraScale: Double? = nil) {
+                    loraScale: Double? = nil, decoder: String? = nil) {
             self.repository = repository
             self.revision = revision
             self.precision = precision
             self.lora = lora
             self.loraScale = loraScale
+            self.decoder = decoder
         }
         enum CodingKeys: String, CodingKey, CaseIterable {
-            case repository, revision, precision, lora
+            case repository, revision, precision, lora, decoder
             case loraScale = "lora_scale"
         }
     }

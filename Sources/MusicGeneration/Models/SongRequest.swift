@@ -17,6 +17,11 @@ import Foundation
 /// A song to make.
 public struct SongRequest: Codable, Sendable, Equatable {
 
+    /// Which model makes the song (`ace-step`, or the opt-in `yue2`).
+    public var engine: SongEngine
+    /// YuE2's own settings; nil is upstream's defaults. Ignored by ACE-Step.
+    public var yue: YuE2Options?
+
     // MARK: Words
 
     /// `caption` — what the music is: genre, mood, instruments, production. Up to 512 characters.
@@ -160,6 +165,7 @@ public struct SongRequest: Codable, Sendable, Equatable {
         self.caption = caption
         self.lyrics = lyrics
         self.instrumental = instrumental
+        engine = .aceStep
         language = "unknown"
         steps = 8
         guidance = 1
@@ -204,6 +210,7 @@ public struct SongRequest: Codable, Sendable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
+        case engine, yue
         case caption, lyrics, instrumental, language, bpm, key
         case timeSignature = "time_signature"
         case duration, steps, guidance
@@ -260,6 +267,8 @@ public struct SongRequest: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         var r = SongRequest(caption: try c.decodeIfPresent(String.self, forKey: .caption) ?? "")
         func v<T: Decodable>(_ key: CodingKeys, _ current: T) throws -> T { try c.decodeIfPresent(T.self, forKey: key) ?? current }
+        r.engine = try v(.engine, r.engine)
+        r.yue = try c.decodeIfPresent(YuE2Options.self, forKey: .yue)
         r.lyrics = try v(.lyrics, r.lyrics)
         r.instrumental = try v(.instrumental, r.instrumental)
         r.language = try v(.language, r.language)

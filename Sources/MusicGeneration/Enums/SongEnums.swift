@@ -31,3 +31,29 @@ public enum ChunkMaskMode: String, Codable, Sendable, CaseIterable { case auto, 
 
 /// `repaint_mode`.
 public enum RepaintMode: String, Codable, Sendable, CaseIterable { case conservative, balanced, aggressive }
+
+/// Which model makes the song.
+public enum SongEngine: String, Codable, Sendable, CaseIterable {
+    /// ACE-Step 1.5 turbo (MIT) — the default.
+    case aceStep = "ace-step"
+    /// YuE2-3B (weights CC BY-NC 4.0 + individual-creator permission) — opt-in behind its licence.
+    case yue2
+}
+
+/// YuE2's symbolic planning (`cot`).
+public enum YuE2Planning: String, Codable, Sendable, CaseIterable {
+    /// A chord-annotated ABC score first (upstream's default).
+    case full
+    /// A melody-only score (recommended for covers from a supplied score).
+    case melody
+    /// No score.
+    case off
+}
+
+/// Which YuE2 decoder renders the latents.
+public enum YuE2Decoder: String, Codable, Sendable, CaseIterable {
+    /// m-a-p/YuE2-Vae — better perceptual quality (upstream's default).
+    case standard
+    /// m-a-p/YuE2-Vae-legacy — the decoder upstream's benchmarks used.
+    case legacy
+}

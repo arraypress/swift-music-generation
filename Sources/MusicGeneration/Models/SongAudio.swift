@@ -35,21 +35,25 @@ public struct GeneratedSong: Sendable {
     public var resolved: SongRequest
     /// What the planner wrote into its reasoning block, if it ran.
     public var plan: SongPlan?
-    /// The 5 Hz codes the DiT started from, if any.
+    /// The codes the audio was rendered from, if any: ACE-Step's 5 Hz codes, YuE2's 25 Hz song tokens.
     public var audioCodes: [Int]?
     /// Seconds per stage.
     public var timings: SongTimings
+    /// YuE2: the song tokens hit their cap before the model ended the song.
+    public var truncated: Bool
 
-    public init(audio: SongAudio, resolved: SongRequest, plan: SongPlan?, audioCodes: [Int]?, timings: SongTimings) {
+    public init(audio: SongAudio, resolved: SongRequest, plan: SongPlan?, audioCodes: [Int]?, timings: SongTimings,
+                truncated: Bool = false) {
         self.audio = audio
         self.resolved = resolved
         self.plan = plan
         self.audioCodes = audioCodes
         self.timings = timings
+        self.truncated = truncated
     }
 }
 
-/// The planner's reasoning block.
+/// What the planner decided: ACE-Step's reasoning block, or YuE2's score.
 public struct SongPlan: Codable, Sendable, Equatable {
     public var bpm: Int?
     public var caption: String?
@@ -57,9 +61,12 @@ public struct SongPlan: Codable, Sendable, Equatable {
     public var key: String?
     public var language: String?
     public var timeSignature: String?
+    /// YuE2: the ABC score it planned (or was given).
+    public var score: String?
 
     public init(bpm: Int? = nil, caption: String? = nil, duration: Int? = nil, key: String? = nil,
-                language: String? = nil, timeSignature: String? = nil) {
+                language: String? = nil, timeSignature: String? = nil, score: String? = nil) {
+        self.score = score
         self.bpm = bpm
         self.caption = caption
         self.duration = duration
@@ -69,7 +76,7 @@ public struct SongPlan: Codable, Sendable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case bpm, caption, duration, key, language
+        case bpm, caption, duration, key, language, score
         case timeSignature = "time_signature"
     }
 }

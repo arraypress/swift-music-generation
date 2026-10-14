@@ -96,6 +96,36 @@ final class MusicGenerationTests: XCTestCase {
         XCTAssertEqual(changed.output.format, .flac)
     }
 
+    func testYuE2RecipeFields() throws {
+        var r = SongRequest(caption: "pop")
+        r = try RecipeRules.set("engine", "yue2", in: r)
+        r = try RecipeRules.set("yue.planning", "off", in: r)
+        r = try RecipeRules.set("ode_steps", "16", in: r)               // a bare YuE2 name
+        r = try RecipeRules.set("request.yue.semantic_top_p", "0.9", in: r)
+        XCTAssertEqual(r.engine, .yue2)
+        XCTAssertEqual(r.yue?.planning, .off)
+        XCTAssertEqual(r.yue?.odeSteps, 16)
+        XCTAssertEqual(r.yue?.semanticTopP, 0.9)
+        XCTAssertEqual(r.yue?.effectiveGuidance, 1.01)
+        XCTAssertThrowsError(try RecipeRules.set("yue.planning", "sometimes", in: r))
+        XCTAssertThrowsError(try RecipeRules.set("yue.ode_step", "3", in: r))
+        XCTAssertThrowsError(try RecipeRules.set("engine", "musicgen", in: r))
+        let recipe = SongRecipe(engine: "yue2-3b", model: .init(repository: "m-a-p/YuE2-3B", revision: "v", decoder: "m-a-p/YuE2-Vae@w"),
+                                style: nil, request: r, output: .init(format: .wav), plan: SongPlan(score: "X:1\nK:C\nC4|"),
+                                provenance: nil)
+        let data = try RecipeRules.encoded(recipe)
+        XCTAssertEqual(try RecipeRules.decoded(data), recipe)
+        var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        var inner = object["request"] as! [String: Any]
+        var yue = inner["yue"] as! [String: Any]
+        yue["ode_step"] = 3
+        inner["yue"] = yue
+        object["request"] = inner
+        XCTAssertThrowsError(try RecipeRules.decoded(JSONSerialization.data(withJSONObject: object))) { error in
+            XCTAssertTrue((error as! RecipeError).message.contains("request.yue.ode_step"))
+        }
+    }
+
     func testRequestDefaultsAreUpstreams() {
         let r = SongRequest(caption: "x")
         XCTAssertEqual(r.steps, 8)

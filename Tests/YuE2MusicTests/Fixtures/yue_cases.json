@@ -1,0 +1,37 @@
+{
+ "tokenizer": [
+  "Hello world",
+  "  leading spaces and\ttabs\n\nnew lines",
+  "X:1\nT:Song\nM:4/4\nL:1/8\nQ:1/4=125\nK:Amin\n\"Am\"A2 c2 e2 a2|",
+  "今晚不眠 Mandarin funk",
+  "Café déjà vu — “quotes” 123,456.78",
+  "don't won't I'm we'll they'd"
+ ],
+ "cases": [
+  {
+   "id": "y-full",
+   "style": "uplifting trance, 138 BPM, ethereal female vocal, supersaw chords",
+   "lyrics": "[Verse]\nUnderneath the silver city lights\nI can feel the night begin to rise\nEvery heartbeat calling out your name\nNothing here will ever be the same\n\n[Chorus]\nLift me higher, take me to the sky\nHold me close and never say goodbye\nLift me higher, we will never fall\nDancing in the brightest light of all",
+   "cot": "full",
+   "seed": 42,
+   "abc_sampling": {
+    "max_tokens": 600
+   },
+   "semantic_sampling": {
+    "max_tokens": 400,
+    "min_tokens": 200
+   }
+  },
+  {
+   "id": "y-off",
+   "style": "hip-hop, 90 BPM, confident male rapper, boom-bap drums",
+   "lyrics": "[Verse]\nWoke up early with the city on my mind\nEvery block I walk I leave the doubt behind\nPen in my pocket and a beat in my chest\nNever took a shortcut, never settled for less\n\n[Verse]\nMama said be patient, now I see what she meant\nEvery hour on the grind is a dollar well spent\nMicrophone check, let the people hear the sound\nCame up from the basement, now I'm holding my ground",
+   "cot": "off",
+   "seed": 7,
+   "semantic_sampling": {
+    "max_tokens": 300,
+    "min_tokens": 200
+   }
+  }
+ ]
+}

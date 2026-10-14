@@ -4,12 +4,15 @@ Songs from words on Apple silicon: [ACE-Step 1.5](https://github.com/ace-step/AC
 turbo (MIT) ported to MLX Swift. Give it a caption, optional lyrics and as many musical facts
 as you like; its planner writes the rest (tempo, key, a detailed caption and a 5 Hz sketch
 of the song), its diffusion transformer renders 48 kHz stereo. Covers, repaints, extensions
-and timbre references of your own audio too. Nothing leaves the Mac.
+and timbre references of your own audio too. Nothing leaves the Mac. A second, opt-in
+engine runs [YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B), which writes an editable ABC
+score before the song (its weights carry their own licence — see [YuE2](#yue2)).
 
 | Product | What it is | Dependencies |
 | --- | --- | --- |
 | `MusicGeneration` | The request (every upstream parameter), styles, recipes, audio files | none |
 | `ACEStepMusic` | The engine: planner LM, text encoder, DiT, Oobleck VAE | mlx-swift, mlx-swift-lm, swift-transformers |
+| `YuE2Music` | The opt-in YuE2 engine: score, song tokens, flow-matched latents, decoder | mlx-swift, mlx-swift-lm |
 
 The command-line tool is [`song`](https://github.com/arraypress/swift-song-cli).
 
@@ -282,8 +285,106 @@ rate, and, for information only, the planner's choices and what wrote it. Readin
 unknown keys and newer formats. Replaying it is the same run: the same planner draws, the
 same noise, the same song, byte for byte (checked).
 
+## YuE2
+
+`YuE2Engine` runs YuE2-3B (Multimodal Art Projection) on MLX, in bfloat16 as shipped. It is a
+mixture of transformers: 28 Qwen3-shaped layers, each with an autoregressive path that
+writes a chord-annotated ABC score and then 25 Hz song tokens, and a bidirectional path that
+turns those tokens into 64-channel latents with 32 midpoint flow-matching steps. An Oobleck
+decoder renders 48 kHz stereo from the latents.
+
+```swift
+import MusicGeneration
+import YuE2Music
+
+let engine = try YuE2Engine(modelDirectory: folder, licence: YuE2Licence.version)   // naming the licence accepts it
+var request = SongRequest(caption: "vocal trance, ethereal female vocal, supersaw chords")
+request.engine = .yue2
+request.lyrics = words                         // [Verse] / [Chorus] sections
+request.bpm = 138
+request.seed = 42
+let song = try await engine.generate(request)[0]
+print(song.plan?.score ?? "")                  // the ABC it followed; edit it and pass it back as yue.score
+```
+
+**Licence.** The weights are CC BY-NC 4.0, with the licensors' 2026-09-16 permission for
+individual creators: a person may use them free of charge and publish, sell or license the
+songs they make; a company may not use them commercially without a licence from m-a-p;
+responsible-use conditions apply. `YuE2Engine` refuses to start unless it is handed
+`YuE2Licence.version`; `YuE2Licence.summary` and `.individualCreatorPermission` hold the
+terms (the CLI shows both before a person accepts). The engine's code follows m-a-p's
+yue2-infer (Apache-2.0) — see `THIRD_PARTY_NOTICES.md`.
+
+**The model.** `YuE2Model` pins `m-a-p/YuE2-3B` at `8f24312` (7.26 GB, bfloat16, with
+`qwen.tiktoken`) and `m-a-p/YuE2-Vae` at `152733a` (0.53 GB, float32); the legacy decoder
+upstream benchmarked, `m-a-p/YuE2-Vae-legacy` at `d0585a9`, is a separate opt-in download.
+They live in one folder as `YuE2-3B/`, `YuE2-Vae/` and `YuE2-Vae-legacy/`.
+
+**How it was checked.** Against yue2-infer 0.1.5 on PyTorch (MPS), with every stage dumped,
+for two cases — full planning with a song, and planning off with a rap (`YuE2ParityTests`:
+`YUE2_MODEL=… YUE2_REF=<dump> swift test --filter YuE2Parity`):
+
+| Stage | Full planning | Planning off |
+| --- | --- | --- |
+| Tokenizer (six texts incl. CJK, accents, ABC) and both prompts | identical ids | identical ids |
+| Score logits, 24 steps teacher-forced | cos ≥ 0.99976 | — |
+| Song-token logits, 24 steps (off: with its 1.01 guidance) | cos ≥ 0.99992 | cos ≥ 0.99998 |
+| Sampling filter from upstream's logits | same tokens kept, every step | within 3 tokens on the top-p edge (upstream's bf16 arithmetic) |
+| Velocity at t = 1 / mid-step | 34.3 / 32.9 dB SNR | 39.1 / 39.0 dB |
+| Latents after 32 steps, same noise | 36.5 dB | 39.6 dB |
+| Decoder, same latents (1024- or 128-frame tiles) | 116.0 dB | 114.0 dB |
+| Audio from Swift's latents | 29.7 dB | 35.0 dB |
+
+The transformer runs in bfloat16 on both sides, so the 33–40 dB on the latents is bf16 noise
+between two backends, not a modelling difference; the decoder (float32) matches to 116 dB.
+The random draws differ by design (see the table below), so a seed replays in Swift, not the
+Python song.
+
+### Every YuE2 parameter
+
+Each field of yue2_infer 0.1.5's `SongRequest`, `GenerationConfig`, `Sampling` and
+`YuE2Pipeline`, and each option of its `yue2` command, with the `SongRequest` key and the
+`song` flag. YuE2 settings sit under `yue` in a request (`--set yue.ode_steps=16`, or the bare
+name: `--set ode_steps=16`).
+
+| Upstream parameter | `SongRequest` / recipe key | `song` flag | Notes |
+| --- | --- | --- | --- |
+| `style` / `tags` | `caption` (+ `bpm`, `key`, `instrumental`) | the words; `--style` adds its own | the `[Tags]` line; a tempo or key you set is appended as YuE2's examples write it ("138 BPM", "A minor") unless the caption already names it |
+| `lyrics` / `--lyrics-file` | `lyrics` | `--lyrics FILE` / `-` | section tags capitalised (`[verse]` → `[Verse]`); `--instrumental` sends wordless sections |
+| `cot` | `yue.planning` | `--planning full\|melody\|off` | full is upstream's default |
+| `abc` / `--abc-file` | `yue.score` | `--score FILE` | render your own (or an edited) ABC score; needs full or melody |
+| `seed` | `seed` | `--seed` | 0–2³²−1 here (upstream 0–2⁶³−1); random when left out, and recorded |
+| `cfg_scale` / `--cfg-scale` | `yue.guidance` | `--yue-guidance` | upstream's 1.0, or 1.01 with planning off |
+| `GenerationConfig.abc` (`temperature`, `top_p`, `top_k`, `repetition_penalty`, `penalty_window`, `min_tokens`, `max_tokens`) | `yue.abc_*` | `--abc-temperature`, `--abc-top-p`, `--abc-top-k`, `--abc-repetition-penalty`, `--abc-penalty-window`, `--abc-min-tokens`, `--abc-max-tokens` | 0.7, 0.9, 30, 1.005, 100, 32, 4096 |
+| `GenerationConfig.semantic` (the same seven) | `yue.semantic_*` | `--semantic-temperature` … `--semantic-max-tokens` | 1.0, 0.95, 100, 1.2, 50, 200, 9000 |
+| — (no duration upstream) | `duration` | `--duration` | caps the song tokens at 25 a second (the lower of it and `semantic_max_tokens`) |
+| `ode_steps` | `yue.ode_steps` | `--ode-steps` | 32 midpoint steps |
+| `--vae` (standard, legacy) | `yue.decoder` | `--decoder standard\|legacy` | legacy is a separate 0.5 GB download |
+| `vae_core_frames` | `yue.decoder_tile_frames` | `--decoder-tile-frames` | 16 frames of context either side, as upstream |
+| `--stage plan` | — | `--score-only --save-score FILE` | the score, no audio |
+| `--request`, `--config`, `batch --input` | a recipe | `song recipe FILE` | |
+| `--offline` | — | `--no-download` | |
+| `--output`, `--id` | — | `-o`, `--out` | |
+| `--quiet` / `--no-progress` | — | `--quiet` | |
+| `--model`, `--revision`, `--vae-revision` | `model` in a recipe | `--model DIR` | revisions are pinned (`YuE2Model`) |
+| `SongResult.save_artifacts` (score, tokens, latents) | — | `--save-score`, `--save-recipe` | the song tokens are in `GeneratedSong.audioCodes` |
+
+Not supported, and why:
+
+| Upstream | Why not |
+| --- | --- |
+| `ode_method` other than midpoint, `context` other than 24,576 | upstream refuses them too (`GenerationConfig.__post_init__`) |
+| `backend` torch / torch-eager / vllm, `--device`, CUDA graphs | one MLX backend on Apple silicon |
+| `quantization` fp8, `--offload-ar`, `memory_budget_gib` / `--budget` | CUDA memory tools; on unified memory `--decoder-tile-frames` is the one memory knob that matters |
+| `--resume`, `--concurrency` | one song at a time, nothing half-written to resume |
+| `doctor --verify-hashes`, `verify`, `bench`, `eval` | checksums are verified on every download; `song models` shows the state |
+| Cover transcription (SheetSage 2 / MERT, in the README's cover recipe) | separate models upstream does not ship in the wheel; write or edit the ABC and pass `--score` |
+| Exact Python draws | upstream draws with `torch.multinomial` and `torch.randn` on its own generators; the same distributions are drawn here with MLX's seeded generator, so a seed replays in Swift but is not the Python song |
+
 ## Licences
 
 MIT. The weights are MIT (ACE-Step); the text encoder and planner derive from Qwen3
-(Apache-2.0). Parts of the network code were adapted from
+(Apache-2.0). YuE2's weights are CC BY-NC 4.0 with the individual-creator permission, and
+opt-in; the YuE2 engine follows m-a-p's yue2-infer (Apache-2.0); the shared Oobleck decoder
+derives from stable-audio-tools and BigVGAN (MIT). Parts of the network code were adapted from
 [mere.run](https://github.com/sawfwair/mere-run) (MIT) — see `THIRD_PARTY_NOTICES.md`.

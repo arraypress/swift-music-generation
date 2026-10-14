@@ -15,6 +15,7 @@
 
 import Foundation
 import MLX
+import MusicNetworks
 import MLXNN
 
 enum WeightLoading {
@@ -54,7 +55,7 @@ enum WeightLoading {
             if key.hasSuffix(".weight_g") {
                 let base = String(key.dropLast(".weight_g".count))
                 guard let v = raw[base + ".weight_v"] else { throw .modelMissing("VAE: \(key) has no weight_v") }
-                var w = foldWeightNorm(g: value.asType(.float32), v: v.asType(.float32))
+                var w = WeightNorm.fold(g: value.asType(.float32), v: v.asType(.float32))
                 w = base.hasSuffix("conv_t1") ? w.transposed(1, 2, 0) : w.swappedAxes(1, 2)
                 weights[base + ".weight"] = w.asType(dtype)
             } else if key.hasSuffix(".alpha") || key.hasSuffix(".beta") {
@@ -67,13 +68,6 @@ enum WeightLoading {
             try vae.update(parameters: ModuleParameters.unflattened(weights), verify: .all)
         } catch { throw .modelMissing("the VAE weights do not fit: \(error)") }
         MLX.eval(vae)
-    }
-
-    /// `g · v / (‖v‖ + 1e-9)`, the norm taken over every axis but the first.
-    static func foldWeightNorm(g: MLXArray, v: MLXArray) -> MLXArray {
-        let flat = v.reshaped(v.dim(0), -1)
-        let norm = MLX.sqrt((flat * flat).sum(axis: 1)).reshaped(g.shape)
-        return g * v / (norm + 1e-9)
     }
 }
 
