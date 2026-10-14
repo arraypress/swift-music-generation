@@ -1,0 +1,122 @@
+[
+ {
+  "key": "caption",
+  "value": "An energetic, driving progressive house track built on a foundation of a punchy four-on-the-floor kick drum and a rolling, arpeggiated synth bassline. The arrangement methodically builds tension.",
+  "yaml": "caption: An energetic, driving progressive house track built on a foundation of a\n  punchy four-on-the-floor kick drum and a rolling, arpeggiated synth bassline. The\n  arrangement methodically builds tension."
+ },
+ {
+  "key": "keyscale",
+  "value": "An energetic, driving progressive house track built on a foundation of a punchy four-on-the-floor kick drum and a rolling, arpeggiated synth bassline. The arrangement methodically builds tension.",
+  "yaml": "keyscale: An energetic, driving progressive house track built on a foundation of a\n  punchy four-on-the-floor kick drum and a rolling, arpeggiated synth bassline. The\n  arrangement methodically builds tension."
+ },
+ {
+  "key": "caption",
+  "value": "short caption",
+  "yaml": "caption: short caption"
+ },
+ {
+  "key": "keyscale",
+  "value": "short caption",
+  "yaml": "keyscale: short caption"
+ },
+ {
+  "key": "caption",
+  "value": "It's a song: with a colon and space, and 'quotes' that need doubling when quoted, plus more words to push it well past eighty columns wide here.",
+  "yaml": "caption: 'It''s a song: with a colon and space, and ''quotes'' that need doubling\n  when quoted, plus more words to push it well past eighty columns wide here.'"
+ },
+ {
+  "key": "keyscale",
+  "value": "It's a song: with a colon and space, and 'quotes' that need doubling when quoted, plus more words to push it well past eighty columns wide here.",
+  "yaml": "keyscale: 'It''s a song: with a colon and space, and ''quotes'' that need doubling\n  when quoted, plus more words to push it well past eighty columns wide here.'"
+ },
+ {
+  "key": "caption",
+  "value": "# starts with a hash and goes on for a while so that folding has to happen somewhere along the way, yes indeed it does",
+  "yaml": "caption: '# starts with a hash and goes on for a while so that folding has to happen\n  somewhere along the way, yes indeed it does'"
+ },
+ {
+  "key": "keyscale",
+  "value": "# starts with a hash and goes on for a while so that folding has to happen somewhere along the way, yes indeed it does",
+  "yaml": "keyscale: '# starts with a hash and goes on for a while so that folding has to happen\n  somewhere along the way, yes indeed it does'"
+ },
+ {
+  "key": "caption",
+  "value": "A ballad — with an em dash, ünïcödé letters, and “curly quotes” that run long enough to wrap around the eighty-column limit of PyYAML.",
+  "yaml": "caption: A ballad — with an em dash, ünïcödé letters, and “curly quotes” that run\n  long enough to wrap around the eighty-column limit of PyYAML."
+ },
+ {
+  "key": "keyscale",
+  "value": "A ballad — with an em dash, ünïcödé letters, and “curly quotes” that run long enough to wrap around the eighty-column limit of PyYAML.",
+  "yaml": "keyscale: A ballad — with an em dash, ünïcödé letters, and “curly quotes” that run\n  long enough to wrap around the eighty-column limit of PyYAML."
+ },
+ {
+  "key": "caption",
+  "value": "yes",
+  "yaml": "caption: 'yes'"
+ },
+ {
+  "key": "keyscale",
+  "value": "yes",
+  "yaml": "keyscale: 'yes'"
+ },
+ {
+  "key": "caption",
+  "value": "123",
+  "yaml": "caption: '123'"
+ },
+ {
+  "key": "keyscale",
+  "value": "123",
+  "yaml": "keyscale: '123'"
+ },
+ {
+  "key": "caption",
+  "value": "trailing space ",
+  "yaml": "caption: 'trailing space '"
+ },
+ {
+  "key": "keyscale",
+  "value": "trailing space ",
+  "yaml": "keyscale: 'trailing space '"
+ },
+ {
+  "key": "caption",
+  "value": "verylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspaces then normal words follow after the giant token so the fold logic sees it",
+  "yaml": "caption: verylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspaces\n  then normal words follow after the giant token so the fold logic sees it"
+ },
+ {
+  "key": "keyscale",
+  "value": "verylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspaces then normal words follow after the giant token so the fold logic sees it",
+  "yaml": "keyscale: verylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspacesverylongwordwithoutanyspaces\n  then normal words follow after the giant token so the fold logic sees it"
+ },
+ {
+  "key": "caption",
+  "value": "A track with a C# minor key mention, 4/4 time, and a [verse] tag inside the caption text that keeps on going past the limit.",
+  "yaml": "caption: A track with a C# minor key mention, 4/4 time, and a [verse] tag inside the\n  caption text that keeps on going past the limit."
+ },
+ {
+  "key": "keyscale",
+  "value": "A track with a C# minor key mention, 4/4 time, and a [verse] tag inside the caption text that keeps on going past the limit.",
+  "yaml": "keyscale: A track with a C# minor key mention, 4/4 time, and a [verse] tag inside\n  the caption text that keeps on going past the limit."
+ },
+ {
+  "key": "caption",
+  "value": "- dash start then text",
+  "yaml": "caption: '- dash start then text'"
+ },
+ {
+  "key": "keyscale",
+  "value": "- dash start then text",
+  "yaml": "keyscale: '- dash start then text'"
+ },
+ {
+  "key": "caption",
+  "value": "Mid string colon:no-space and a hash#inside are fine for plain scalars, and this sentence keeps going to force at least one fold.",
+  "yaml": "caption: Mid string colon:no-space and a hash#inside are fine for plain scalars, and\n  this sentence keeps going to force at least one fold."
+ },
+ {
+  "key": "keyscale",
+  "value": "Mid string colon:no-space and a hash#inside are fine for plain scalars, and this sentence keeps going to force at least one fold.",
+  "yaml": "keyscale: Mid string colon:no-space and a hash#inside are fine for plain scalars,\n  and this sentence keeps going to force at least one fold."
+ }
+]
