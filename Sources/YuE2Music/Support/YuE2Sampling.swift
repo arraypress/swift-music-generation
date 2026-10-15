@@ -65,22 +65,36 @@ enum YuE2Sampling {
     }
 
     /// Temperature, top-k and top-p over the sorted probabilities keeping the first (three under
-    /// legacy) — the rest of upstream's `distribution` — on the k best only: everything else is
-    /// -inf upstream anyway. Returns the k token ids, best first, and their filtered scores.
+    /// legacy) — the rest of upstream's `distribution` — on the best few hundred only (everything
+    /// else is -inf upstream anyway). Upstream's top-k keeps every score equal to the k-th, and
+    /// bfloat16 logits tie often, so the candidates are the k best plus a margin, cut at the k-th
+    /// score; if even the margin ties, the whole vocabulary is used. Returns the candidate ids,
+    /// best first, and their filtered scores.
     static func topCandidates(_ scores: MLXArray, settings s: YuE2SamplingSettings, legacy: Bool) -> (ids: MLXArray, scores: MLXArray) {
         var x = scores
         if s.temperature != 1 { x = x / MLXArray(s.temperature).asType(x.dtype) }
-        let k = min(s.topK, x.dim(-1))
-        let top = MLX.argPartition(-x, kth: k - 1, axis: -1)[0..., ..<k]
-        let unsorted = MLX.takeAlong(x, top, axis: -1)
-        let order = MLX.argSort(-unsorted, axis: -1)
-        let ids = MLX.takeAlong(top, order, axis: -1)
+        let vocabulary = x.dim(-1)
+        let k = min(s.topK, vocabulary)
+        var m = min(vocabulary, k + 256)
+        var top = MLX.argPartition(-x, kth: m - 1, axis: -1)[0..., ..<m]
+        var unsorted = MLX.takeAlong(x, top, axis: -1)
+        var order = MLX.argSort(-unsorted, axis: -1)
         var values = MLX.takeAlong(unsorted, order, axis: -1)
+        if m < vocabulary, values[0, k - 1].item(Float.self) == values[0, m - 1].item(Float.self) {
+            m = vocabulary
+            top = MLXArray(Int32(0) ..< Int32(vocabulary)).reshaped(1, -1)
+            unsorted = x
+            order = MLX.argSort(-unsorted, axis: -1)
+            values = MLX.takeAlong(unsorted, order, axis: -1)
+        }
+        let ids = MLX.takeAlong(top, order, axis: -1)
+        let negInf = MLXArray(-Float.infinity).asType(values.dtype)
+        values = MLX.where(values .< values[0..., (k - 1) ..< k], negInf, values)
         if s.topP < 1 {
             let probabilities = MLX.softmax(values, axis: -1)
             var removed = (MLX.cumsum(probabilities, axis: -1) - probabilities) .> MLXArray(s.topP).asType(probabilities.dtype)
-            removed = MLX.logicalAnd(removed, MLXArray(0 ..< k).reshaped(1, -1) .>= (legacy ? 3 : 1))
-            values = MLX.where(removed, MLXArray(-Float.infinity).asType(values.dtype), values)
+            removed = MLX.logicalAnd(removed, MLXArray(0 ..< m).reshaped(1, -1) .>= (legacy ? 3 : 1))
+            values = MLX.where(removed, negInf, values)
         }
         return (ids, values)
     }
