@@ -10,7 +10,7 @@ score before the song (its weights carry their own licence — see [YuE2](#yue2)
 
 | Product | What it is | Dependencies |
 | --- | --- | --- |
-| `MusicGeneration` | The request (every upstream parameter), styles, recipes, audio files | none |
+| `MusicGeneration` | The request (every upstream parameter), styles, recipes, audio files | swift-recipe-kit (Foundation only) |
 | `ACEStepMusic` | The engine: planner LM, text encoder, DiT, Oobleck VAE | mlx-swift, mlx-swift-lm, swift-transformers |
 | `YuE2Music` | The opt-in YuE2 engine: score, song tokens, flow-matched latents, decoder | mlx-swift, mlx-swift-lm |
 
@@ -284,6 +284,14 @@ the request as given (with the seed), the style and its slot values, the output 
 rate, and, for information only, the planner's choices and what wrote it. Reading refuses
 unknown keys and newer formats. Replaying it is the same run: the same planner draws, the
 same noise, the same song, byte for byte (checked).
+
+Slot filling, `--var`, the strict recipe reader and the `--set` engine are
+[swift-recipe-kit](https://github.com/arraypress/swift-recipe-kit)'s, shared with imagine
+(0.2.1; imported with this library). What is song's own is the field-kind table and the
+paths. Since 0.2.1, `--set` follows the shared rules: a yes/no field takes
+`true`/`yes`/`1` or `false`/`no`/`0` (not `on`/`off`), a whole-number field refuses `120.0`,
+a seed's message names its range, and `inf` in a number field is refused rather than
+crashing.
 
 ## YuE2
 

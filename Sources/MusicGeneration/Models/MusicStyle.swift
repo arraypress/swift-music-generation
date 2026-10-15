@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import RecipeKit
 
 /// A named sound and its starting settings.
 public struct MusicStyle: Codable, Sendable, Equatable, Identifiable {
@@ -64,49 +65,9 @@ public struct MusicStyle: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
-/// A gap in a style's caption, written `{name}`, and what may fill it.
-public struct StyleSlot: Codable, Sendable, Equatable {
-    /// Lower-case, as written and typed: `lead`.
-    public let name: String
-    /// The value used when none is given: one of ``known``'s names.
-    public let defaultValue: String
-    /// The values it was written for; any other goes into the caption as typed.
-    public let known: [Value]
-
-    public init(name: String, defaultValue: String, known: [Value]) {
-        self.name = name
-        self.defaultValue = defaultValue
-        self.known = known
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case name
-        case defaultValue = "default"
-        case known
-    }
-
-    /// One value a slot knows.
-    public struct Value: Codable, Sendable, Equatable {
-        /// As typed: `acid`.
-        public let name: String
-        /// What goes into the caption when it says more than the name: "squelching acid line".
-        public let phrase: String?
-        /// Other names for it.
-        public let aliases: [String]?
-
-        public init(name: String, phrase: String? = nil, aliases: [String]? = nil) {
-            self.name = name
-            self.phrase = phrase
-            self.aliases = aliases
-        }
-
-        public var names: [String] { [name] + (aliases ?? []) }
-        public var text: String { phrase ?? name }
-    }
-
-    /// The marker the caption uses: `{lead}`.
-    public var marker: String { "{\(name)}" }
-}
+/// A gap in a style's caption, written `{name}`, and what may fill it —
+/// RecipeKit's, shared with imagine's styles.
+public typealias StyleSlot = RecipeKit.StyleSlot
 
 /// A default value as JSON writes it: a string, a number or a boolean.
 public enum StyleValue: Codable, Sendable, Equatable, CustomStringConvertible {

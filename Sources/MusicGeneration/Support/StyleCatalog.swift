@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import RecipeKit
 
 public enum StyleCatalog {
 
@@ -20,34 +21,20 @@ public enum StyleCatalog {
         public var problems: [String] = []
     }
 
+    /// Every style in `texts` (JSON groups), with every problem: bad JSON, a
+    /// name twice or not kebab-case, a marker that is no slot, a slot no
+    /// marker uses, a default a slot does not know or a field cannot hold.
     public static func parse(_ texts: [String]) -> Result {
-        var result = Result()
-        var seen = Set<String>()
-        for text in texts {
-            let styles: [MusicStyle]
-            do { styles = try JSONDecoder().decode([MusicStyle].self, from: Data(text.utf8)) } catch {
-                result.problems.append("a style group is not valid JSON: \(error)")
-                continue
-            }
-            for style in styles {
-                if !seen.insert(style.name).inserted { result.problems.append("\(style.name): listed twice") }
-                if style.name.range(of: "^[a-z][a-z0-9-]*$", options: .regularExpression) == nil {
-                    result.problems.append("\(style.name): not a kebab-case name")
+        let decoded = StyleCatalogs.decoded(texts, as: MusicStyle.self, name: \.name)
+        var result = Result(styles: decoded.styles, problems: decoded.problems)
+        for style in decoded.styles {
+            result.problems += StyleCatalogs.slotProblems(style: style.name, markers: Set(StyleSlots.markers(in: style.caption)),
+                                                          slots: style.slots)
+            var request = SongRequest(caption: "")
+            for (field, value) in style.defaults {
+                do { request = try RecipeRules.set(field, value.description, in: request) } catch {
+                    result.problems.append("\(style.name): default \(field): \(error.message)")
                 }
-                let markers = Set(StyleSlots.markers(in: style.caption))
-                let slots = Set(style.slots.map(\.name))
-                for marker in markers.subtracting(slots) { result.problems.append("\(style.name): {\(marker)} is not a slot") }
-                for slot in slots.subtracting(markers) { result.problems.append("\(style.name): slot \(slot) is unused") }
-                for slot in style.slots where StyleSlots.known(slot.defaultValue, in: slot) == nil {
-                    result.problems.append("\(style.name): slot \(slot.name)'s default is not one of its values")
-                }
-                var request = SongRequest(caption: "")
-                for (field, value) in style.defaults {
-                    do { request = try RecipeRules.set(field, value.description, in: request) } catch {
-                        result.problems.append("\(style.name): default \(field): \(error.message)")
-                    }
-                }
-                result.styles.append(style)
             }
         }
         return result
@@ -68,10 +55,7 @@ public extension MusicStyle {
     }
 
     /// Up to three names sharing a word with `name`.
-    static func suggestions(for name: String) -> [String] {
-        let words = name.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 }
-        return Array(all.map(\.name).filter { style in words.contains { style.contains($0) } }.prefix(3))
-    }
+    static func suggestions(for name: String) -> [String] { StyleCatalogs.suggestions(for: name, among: all.map(\.name)) }
 
     /// The style called `name`, or the error that names the closest.
     static func require(_ name: String) throws(StyleError) -> MusicStyle {

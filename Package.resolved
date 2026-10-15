@@ -1,5 +1,5 @@
 {
-  "originHash" : "8bb4a90905db52966cb570b59ea8aab879a31dc9b9bd5529759e620192bc5b5e",
+  "originHash" : "234c388f8dd6e23a26d4d9f91d7fe4b805a2d0867a8c4368d0e1f1d07e9b8012",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -80,6 +80,15 @@
       "state" : {
         "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
         "version" : "1.1.1"
+      }
+    },
+    {
+      "identity" : "swift-recipe-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/arraypress/swift-recipe-kit.git",
+      "state" : {
+        "revision" : "27296d26519ec01a6ea214ab5cffa96ad5e971a0",
+        "version" : "0.1.0"
       }
     },
     {

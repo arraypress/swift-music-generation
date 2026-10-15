@@ -7,17 +7,15 @@
 //  The pure parts of requests and recipes: changing one field by name, as
 //  `--set seed=42` or a style default does; reading recipe JSON strictly
 //  (a key it does not know is an error, as imagine's recipes are); and
-//  writing it pretty and key-sorted.
+//  writing it pretty and key-sorted. The engines are RecipeKit's, shared
+//  with imagine; what is song's own is the field-kind table and the paths.
 //
 
 import Foundation
+import RecipeKit
 
-/// Why a recipe or a field could not be read.
-public struct RecipeError: Error, Sendable, Equatable, LocalizedError {
-    public let message: String
-    public init(_ message: String) { self.message = message }
-    public var errorDescription: String? { message }
-}
+/// Why a recipe or a field could not be read — RecipeKit's, shared with imagine.
+public typealias RecipeError = RecipeKit.RecipeError
 
 public enum RecipeRules {
 
@@ -26,120 +24,73 @@ public enum RecipeRules {
     /// Every request field's JSON key.
     public static var requestFields: [String] { SongRequest.fieldNames }
 
+    /// Every path ``set(_:_:in:)-(_,_,SongRequest)`` reaches, relative to the request:
+    /// its fields, then the YuE2 settings as `yue.NAME`. A bare YuE2 name finds
+    /// its `yue.` path when no request field has that name.
+    static let requestPaths: [String] = requestFields.filter { $0 != "yue" } + YuE2Options.fieldNames.map { "yue." + $0 }
+
     /// `request` with `field` (a JSON key, or `request.`-prefixed) set from text as typed.
     /// An empty value clears an optional field or restores a required one's default.
     public static func set(_ field: String, _ value: String, in request: SongRequest) throws(RecipeError) -> SongRequest {
-        var name = field.hasPrefix("request.") ? String(field.dropFirst("request.".count)) : field
-        if !name.hasPrefix("yue."), YuE2Options.fieldNames.contains(name), !requestFields.contains(name) { name = "yue." + name }
-        if name.hasPrefix("yue.") { return try setYuE(String(name.dropFirst(4)), value, in: request) }
-        guard requestFields.contains(name), name != "yue" else {
+        let typed = field.hasPrefix("request.") ? String(field.dropFirst("request.".count)) : field
+        guard let path = FieldPaths.resolve(typed, among: requestPaths) else {
+            if typed.hasPrefix("yue.") {
+                throw RecipeError("\(typed) is not a YuE2 field (\(YuE2Options.fieldNames.map { "yue." + $0 }.joined(separator: ", ")))")
+            }
             throw RecipeError("\(field) is not a request field (\(requestFields.joined(separator: ", ")))")
         }
-        var object: [String: Any]
-        do {
-            object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any] ?? [:]
-        } catch { throw RecipeError("cannot read the request: \(error.localizedDescription)") }
-        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty {
-            object.removeValue(forKey: name)
-        } else {
-            object[name] = try typed(text, for: name)
-        }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: object)
-            return try JSONDecoder().decode(SongRequest.self, from: data)
-        } catch let DecodingError.dataCorrupted(context) {
-            throw RecipeError("\(name) is not a value it can hold\(context.debugDescription.isEmpty ? "" : ": \(context.debugDescription)")")
-        } catch {
-            throw RecipeError("\(name) cannot be \(value): \(kindHint(name))")
+        var request = request
+        // A YuE2 field on a request without YuE2 settings starts from their defaults.
+        if path.hasPrefix("yue."), request.yue == nil { request.yue = YuE2Options() }
+        return try FieldSetter.set(path, to: value, kind: kind(of: path), in: request) { error in
+            failure(error, path: path, value: value)
         }
     }
 
-    /// A field of the request's `yue` settings.
-    static func setYuE(_ name: String, _ value: String, in request: SongRequest) throws(RecipeError) -> SongRequest {
-        guard YuE2Options.fieldNames.contains(name) else {
-            throw RecipeError("yue.\(name) is not a YuE2 field (\(YuE2Options.fieldNames.map { "yue." + $0 }.joined(separator: ", ")))")
-        }
-        var object: [String: Any]
-        do {
-            object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request.yue ?? YuE2Options())) as? [String: Any] ?? [:]
-        } catch { throw RecipeError("cannot read the YuE2 settings: \(error.localizedDescription)") }
-        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty { object.removeValue(forKey: name) } else { object[name] = try typedYuE(text, for: name) }
-        var r = request
-        do {
-            r.yue = try JSONDecoder().decode(YuE2Options.self, from: JSONSerialization.data(withJSONObject: object))
-        } catch {
+    /// The message for a value the request's own decoding refused.
+    static func failure(_ error: any Error, path: String, value: String) -> RecipeError {
+        if path.hasPrefix("yue.") {
+            let name = String(path.dropFirst("yue.".count))
             let choices = name == "planning" ? YuE2Planning.allCases.map(\.rawValue).joined(separator: ", ")
                 : name == "decoder" ? YuE2Decoder.allCases.map(\.rawValue).joined(separator: " or ") : "see `song recipe --help`"
-            throw RecipeError("yue.\(name) cannot be \(value): \(choices)")
+            return RecipeError("\(path) cannot be \(value): \(choices)")
         }
-        return r
+        if case DecodingError.dataCorrupted(let context) = error {
+            return RecipeError("\(path) is not a value it can hold\(context.debugDescription.isEmpty ? "" : ": \(context.debugDescription)")")
+        }
+        return RecipeError("\(path) cannot be \(value): \(kindHint(path))")
     }
 
-    static func typedYuE(_ text: String, for name: String) throws(RecipeError) -> Any {
-        switch name {
-        case "planning", "decoder", "score": return text
-        case "abc_top_k", "abc_penalty_window", "abc_min_tokens", "abc_max_tokens", "semantic_top_k",
-             "semantic_penalty_window", "semantic_min_tokens", "semantic_max_tokens", "ode_steps", "decoder_tile_frames":
-            guard let n = Int(text) else { throw RecipeError("yue.\(name) is a whole number; not \(text)") }
-            return n
-        default:
-            guard let n = Double(text), n.isFinite else { throw RecipeError("yue.\(name) is a number; not \(text)") }
-            return n
-        }
-    }
+    /// What each field holds, by its path from the request; any other is text.
+    static func kind(of path: String) -> FieldKind { kinds[path] ?? .text }
 
-    /// The JSON value for typed text, by the field's kind.
-    static func typed(_ text: String, for name: String) throws(RecipeError) -> Any {
-        switch kind(of: name) {
-        case .bool:
-            switch text.lowercased() {
-            case "true", "yes", "1", "on": return true
-            case "false", "no", "0", "off": return false
-            default: throw RecipeError("\(name) is true or false; not \(text)")
-            }
-        case .integer:
-            guard let n = Int(text) ?? Double(text).flatMap({ $0.rounded() == $0 ? Int($0) : nil }) else {
-                throw RecipeError("\(name) is a whole number; not \(text)")
-            }
-            if name == "seed" || name == "retake_seed", !(0...Int(UInt32.max)).contains(n) {
-                throw RecipeError("\(name) is a whole number 0–\(UInt32.max); not \(text)")
-            }
-            return n
-        case .number:
-            guard let n = Double(text), n.isFinite else { throw RecipeError("\(name) is a number; not \(text)") }
-            return n
-        case .numbers:
-            let items = text.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).split(separator: ",")
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-            let numbers = items.compactMap(Double.init)
-            guard numbers.count == items.count, !numbers.isEmpty else {
-                throw RecipeError("\(name) is a list of numbers: 0.97,0.76,0.5; not \(text)")
-            }
-            return name == "audio_codes" ? numbers.map { Int($0) } : numbers
-        case .text:
-            return text
+    /// The field-kind table `--set` and style defaults are read by.
+    static let kinds: [String: FieldKind] = {
+        var table: [String: FieldKind] = [:]
+        for name in ["instrumental", "adaptive_dual_guidance", "dcw", "thinking", "plan_metadata", "rewrite_caption",
+                     "detect_language", "constrained_decoding", "normalize"] { table[name] = .bool }
+        for name in ["bpm", "time_signature", "steps", "planner_top_k", "repaint_crossfade_frames", "batch_size"] {
+            table[name] = .integer()
         }
-    }
-
-    enum Kind { case bool, integer, number, numbers, text }
-
-    static func kind(of name: String) -> Kind {
-        switch name {
-        case "instrumental", "adaptive_dual_guidance", "dcw", "thinking", "plan_metadata", "rewrite_caption",
-             "detect_language", "constrained_decoding", "normalize": .bool
-        case "bpm", "time_signature", "steps", "seed", "retake_seed", "planner_top_k", "repaint_crossfade_frames",
-             "batch_size": .integer
-        case "duration", "guidance", "guidance_start", "guidance_end", "shift", "velocity_norm_threshold", "velocity_ema",
-             "dcw_scaler", "dcw_high_scaler", "retake_variance", "latent_shift", "latent_rescale", "planner_temperature",
-             "planner_guidance", "planner_top_p", "planner_repetition_penalty", "repaint_start", "repaint_end",
-             "repaint_strength", "repaint_wave_crossfade", "cover_strength", "cover_noise_strength", "normalization_db",
-             "fade_in", "fade_out": .number
-        case "timesteps", "audio_codes": .numbers
-        default: .text
+        for name in ["seed", "retake_seed"] { table[name] = .integer(0...Int(UInt32.max)) }
+        for name in ["duration", "guidance", "guidance_start", "guidance_end", "shift", "velocity_norm_threshold", "velocity_ema",
+                     "dcw_scaler", "dcw_high_scaler", "retake_variance", "latent_shift", "latent_rescale", "planner_temperature",
+                     "planner_guidance", "planner_top_p", "planner_repetition_penalty", "repaint_start", "repaint_end",
+                     "repaint_strength", "repaint_wave_crossfade", "cover_strength", "cover_noise_strength", "normalization_db",
+                     "fade_in", "fade_out"] { table[name] = .number }
+        table["timesteps"] = .numbers
+        table["audio_codes"] = .wholeNumbers
+        for name in YuE2Options.fieldNames {
+            switch name {
+            case "planning", "decoder", "score": table["yue." + name] = .text
+            case "abc_top_k", "abc_penalty_window", "abc_min_tokens", "abc_max_tokens", "semantic_top_k",
+                 "semantic_penalty_window", "semantic_min_tokens", "semantic_max_tokens", "ode_steps", "decoder_tile_frames":
+                table["yue." + name] = .integer()
+            default: table["yue." + name] = .number
+            }
         }
-    }
+        return table
+    }()
 
     static func kindHint(_ name: String) -> String {
         switch name {
@@ -156,60 +107,24 @@ public enum RecipeRules {
 
     // MARK: Recipe JSON
 
+    /// The keys a recipe file may hold.
+    static let format = RecipeFormat(
+        versionKey: "song", version: SongRecipe.formatVersion, rootKeys: SongRecipe.CodingKeys.allCases.map(\.rawValue),
+        sections: [
+            .init("model", keys: SongRecipe.ModelRef.CodingKeys.allCases.map(\.rawValue)),
+            .init("style", keys: SongRecipe.StyleRef.CodingKeys.allCases.map(\.rawValue)),
+            .init("request", keys: SongRequest.fieldNames),
+            .init("request.yue", keys: YuE2Options.fieldNames),
+            .init("output", keys: SongRecipe.Output.CodingKeys.allCases.map(\.rawValue)),
+            .init("plan", keys: ["bpm", "caption", "duration", "key", "language", "score", "time_signature"]),
+            .init("provenance", keys: SongRecipe.Provenance.CodingKeys.allCases.map(\.rawValue)),
+        ])
+
     /// Pretty, key-sorted JSON with slashes left alone.
-    public static func encoded(_ recipe: SongRecipe) throws(RecipeError) -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        do { return try encoder.encode(recipe) } catch { throw RecipeError(error.localizedDescription) }
-    }
+    public static func encoded(_ recipe: SongRecipe) throws(RecipeError) -> Data { try RecipeJSON.encoded(recipe) }
 
     /// A recipe from JSON, refusing a newer format and any key it does not know.
-    public static func decoded(_ data: Data) throws(RecipeError) -> SongRecipe {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            throw RecipeError("it is not a JSON object")
-        }
-        guard let version = root["song"] as? Int else {
-            throw RecipeError("it has no \"song\": \(SongRecipe.formatVersion) — the format version")
-        }
-        guard (1...SongRecipe.formatVersion).contains(version) else {
-            throw RecipeError("it is format \(version); this reads format \(SongRecipe.formatVersion)")
-        }
-        try unknown(root, SongRecipe.CodingKeys.allCases.map(\.rawValue), "")
-        let sections: [(String, [String])] = [
-            ("model", SongRecipe.ModelRef.CodingKeys.allCases.map(\.rawValue)),
-            ("style", SongRecipe.StyleRef.CodingKeys.allCases.map(\.rawValue)),
-            ("request", SongRequest.fieldNames),
-            ("request.yue", YuE2Options.fieldNames),
-            ("output", SongRecipe.Output.CodingKeys.allCases.map(\.rawValue)),
-            ("plan", ["bpm", "caption", "duration", "key", "language", "score", "time_signature"]),
-            ("provenance", SongRecipe.Provenance.CodingKeys.allCases.map(\.rawValue)),
-        ]
-        for (name, keys) in sections {
-            let value: Any? = name == "request.yue" ? (root["request"] as? [String: Any])?["yue"] : root[name]
-            guard let value, !(value is NSNull) else { continue }
-            guard let section = value as? [String: Any] else { throw RecipeError("\"\(name)\" is not an object") }
-            try unknown(section, keys, name + ".")
-        }
-        do { return try JSONDecoder().decode(SongRecipe.self, from: data) } catch let DecodingError.typeMismatch(_, context) {
-            throw RecipeError("\(path(context.codingPath)) has the wrong type")
-        } catch let DecodingError.keyNotFound(key, context) {
-            throw RecipeError("\(path(context.codingPath + [key])) is missing")
-        } catch let DecodingError.dataCorrupted(context) {
-            throw RecipeError("\(path(context.codingPath)) is not a value it can hold")
-        } catch {
-            throw RecipeError(error.localizedDescription)
-        }
-    }
-
-    static func unknown(_ object: [String: Any], _ known: [String], _ prefix: String) throws(RecipeError) {
-        if let bad = object.keys.sorted().first(where: { !known.contains($0) }) {
-            throw RecipeError("\(prefix)\(bad) is not a recipe field (\(known.map { prefix + $0 }.joined(separator: ", ")))")
-        }
-    }
-
-    static func path(_ keys: [any CodingKey]) -> String {
-        keys.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: ".")
-    }
+    public static func decoded(_ data: Data) throws(RecipeError) -> SongRecipe { try RecipeJSON.decoded(data, format: format) }
 
     /// `recipe` with one field changed: a request field (`seed`, `request.bpm`),
     /// `output.format`, `output.sample_rate`, or `model.precision`.

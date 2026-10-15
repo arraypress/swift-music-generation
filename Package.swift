@@ -19,6 +19,8 @@ let package = Package(
         .library(name: "YuE2Music", targets: ["YuE2Music"]),
     ],
     dependencies: [
+        // Style slots, --var, strict recipe JSON and --set: the rules imagine shares.
+        .package(url: "https://github.com/arraypress/swift-recipe-kit.git", from: "0.1.0"),
         // 0.32: the Python reference runs mlx 0.32.3; swift-tts measured layer drift on 0.31.6.
         .package(url: "https://github.com/ml-explore/mlx-swift.git", .upToNextMajor(from: "0.32.3")),
         // Qwen3 for the planner LM and the text encoder.
@@ -26,7 +28,7 @@ let package = Package(
         .package(url: "https://github.com/huggingface/swift-transformers.git", .upToNextMajor(from: "1.1.6")),
     ],
     targets: [
-        .target(name: "MusicGeneration"),
+        .target(name: "MusicGeneration", dependencies: [.product(name: "RecipeKit", package: "swift-recipe-kit")]),
         // Networks the engines share (the Oobleck VAE), package-internal.
         .target(
             name: "MusicNetworks",

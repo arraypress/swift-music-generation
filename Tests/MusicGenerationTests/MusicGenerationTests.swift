@@ -74,6 +74,22 @@ final class MusicGenerationTests: XCTestCase {
         XCTAssertThrowsError(try RecipeRules.set("bpm", "fast", in: r))
     }
 
+    /// 0.2.1, on RecipeKit: imagine's stricter rules, and two crashes gone.
+    func testSetSharesImaginesRules() throws {
+        let r = SongRequest(caption: "x")
+        func message(_ field: String, _ value: String) -> String? {
+            do { _ = try RecipeRules.set(field, value, in: r); return nil } catch { return error.message }
+        }
+        XCTAssertEqual(message("instrumental", "on"), "instrumental is true or false; not on")
+        XCTAssertEqual(message("bpm", "120.0"), "bpm is a whole number; not 120.0")
+        XCTAssertEqual(message("bpm", "inf"), "bpm is a whole number; not inf")             // crashed in 0.2.0
+        XCTAssertEqual(message("timesteps", "1,inf"), "timesteps is a list of numbers: 0.97,0.76,0.5; not 1,inf")  // crashed too
+        XCTAssertEqual(message("seed", "abc"), "seed is a whole number 0–4294967295; not abc")
+        XCTAssertEqual(message("yue.nope", "1"), "yue.nope is not a YuE2 field (" + YuE2Options.fieldNames.map { "yue." + $0 }
+            .joined(separator: ", ") + ")")
+        XCTAssertEqual(try RecipeRules.set("audio_codes", "[1.9, 2]", in: r).audioCodes, [1, 2])
+    }
+
     func testRecipeRoundTripsAndRefusesUnknownKeys() throws {
         var request = SongRequest(caption: "synthwave", instrumental: true)
         request.seed = 7
