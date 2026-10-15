@@ -340,6 +340,31 @@ between two backends, not a modelling difference; the decoder (float32) matches 
 The random draws differ by design (see the table below), so a seed replays in Swift, not the
 Python song.
 
+**The five probe prompts** (`song --engine yue2`, full planning, seed 42, a 90 s cap, the
+score planned by YuE2 itself; measured with `muse` and Whisper large-v3-turbo; M3 Max 36 GB with
+the Mac awake and in use, so ordinary desktop GPU load ran alongside):
+
+| Prompt | Length | Score (tempo, key) | Heard (tempo, key) | Lyrics recall / WER | Time (real-time factor) |
+| --- | --- | --- | --- | --- | --- |
+| Progressive house (125 BPM asked) | 90 s, capped | 126, G minor | 126, G minor | instrumental | 254 s (0.35×) |
+| Uplifting trance (138) | 90 s, capped | 138, G minor | 138, G minor | instrumental | 242 s (0.37×) |
+| Vocal trance (138) | 90 s, capped | 138, G minor | 69 = 138 / 2, G minor | 96.4 % / 3.6 % | 152 s (0.59×) |
+| Pop (110) | 41 s, ended itself | 108, A major | 108, A major | 96.4 % / 5.5 % | 87 s (0.47×) |
+| Rap (90) | 67 s, ended itself | 90, B minor | 90.9, B minor | 94.6 % / 12.2 % | 116 s (0.58×) |
+
+The score's tempo and key are what you hear, every time. Peak memory footprint 13.9–14.0 GB
+(the process, model load included). Time splits for the 90 s instrumentals: the score 76–85 s
+(4,096 tokens, capped), the song tokens 48–51 s, the acoustic latents 112 s, the decoder 6 s.
+For comparison, on the same Mac: upstream's PyTorch package on MPS made a 16 s clip at 0.32×
+real time, and the earlier probe's community 8-bit MLX port ran 0.26–0.49× at a 27–31 GB peak.
+A recipe replays byte for byte (checked), and `--score-only` writes the same score a full run
+follows.
+
+Two things measured on the way: a debug build of MLX (`swift test` without `-c release`)
+runs the transformer 3.4× slower (58 against 17 ms a token), so time only release builds; and
+a Mac in idle sleep runs a job only in DarkWake windows, with minutes-long stalls and
+thermal-emergency sleeps under GPU load — measure with the Mac awake.
+
 ### Every YuE2 parameter
 
 Each field of yue2_infer 0.1.5's `SongRequest`, `GenerationConfig`, `Sampling` and
