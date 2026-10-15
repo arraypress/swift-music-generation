@@ -30,7 +30,7 @@ SOFTWARE.
 
 ## ACE-Step 1.5
 
-The port follows github.com/ace-step/ACE-Step-1.5 at ca1e85f (MIT); the weights are ACE-Step/Ace-Step1.5 on Hugging Face (MIT):
+The port follows github.com/ace-step/ACE-Step-1.5 at ca1e85f (MIT); the weights are ACE-Step/Ace-Step1.5 on Hugging Face (MIT), fetched from the byte-identical copy at arraypress/song-ace-step-1.5:
 
 ```
 MIT License

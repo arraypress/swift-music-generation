@@ -7,8 +7,8 @@
 //  ACE-Step 1.5 turbo (MIT, ACE Studio & StepFun) on MLX: songs with or
 //  without vocals from a caption and lyrics, covers, repaints and
 //  extensions, at 48 kHz stereo, entirely on this Mac. The weights load as
-//  Hugging Face ships them (ACE-Step/Ace-Step1.5, pinned in
-//  ``ACEStepModel``); nothing is converted or re-hosted.
+//  Hugging Face ships them (ACE-Step/Ace-Step1.5, fetched from the identical
+//  copy pinned in ``ACEStepModel``); nothing is converted.
 //
 
 import Foundation

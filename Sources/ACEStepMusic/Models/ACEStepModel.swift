@@ -4,19 +4,29 @@
 //
 //  Created by David Sherlock on 2026.
 //
-//  Where the weights come from: ACE-Step/Ace-Step1.5 on Hugging Face at a
-//  pinned revision, every LFS file with its SHA-256 (from the Hub's own
-//  listing, checked on download). MIT, like the code.
+//  Where the weights come from: arraypress/song-ace-step-1.5 on Hugging Face,
+//  a byte-identical copy of the 23 files this engine reads from
+//  ACE-Step/Ace-Step1.5, kept so song survives the upstream repository moving
+//  or changing. Every LFS file carries its SHA-256, checked on download — the
+//  same hashes as upstream's. MIT, like the code.
 //
 
 import Foundation
 
 public enum ACEStepModel {
 
-    public static let repository = "ACE-Step/Ace-Step1.5"
+    public static let repository = "arraypress/song-ace-step-1.5"
 
     /// Pinned: the repository can change under a tool.
-    public static let revision = "19671f406d603126926c1b7e2adc169acbcade22"
+    public static let revision = "7cdff8bafa5893c4b067d396d684993339eee878"
+
+    /// Where the copy came from: the ACE-Step team's own repository and revision.
+    public static let upstreamRepository = "ACE-Step/Ace-Step1.5"
+    public static let upstreamRevision = "19671f406d603126926c1b7e2adc169acbcade22"
+
+    /// Revisions that hold these exact files: recipes written before the copy
+    /// name upstream's, and they replay the same.
+    public static let revisions: Set<String> = [revision, upstreamRevision]
 
     public static let licence = "MIT"
 

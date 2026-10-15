@@ -11,7 +11,8 @@
 public enum ACEStepLicence {
 
     public static let text = """
-    ACE-Step 1.5 — ACE-Step/Ace-Step1.5 (weights) and github.com/ace-step/ACE-Step-1.5 (code)
+    ACE-Step 1.5 — ACE-Step/Ace-Step1.5 (weights; served from the identical copy at
+    arraypress/song-ace-step-1.5) and github.com/ace-step/ACE-Step-1.5 (code)
 
     MIT License
 
