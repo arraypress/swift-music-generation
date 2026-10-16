@@ -55,22 +55,25 @@ public struct SongRecipe: Codable, Sendable, Equatable {
         public var repository: String
         public var revision: String
         public var precision: String?
+        /// The load tier (`full`, `lite`); absent means full (recipes from before tiers).
+        public var tier: ModelTier?
         /// A LoRA adapter folded into the DiT: its folder (relative to the recipe when inside it).
         public var lora: String?
         public var loraScale: Double?
         /// YuE2: the decoder's repository and revision (`m-a-p/YuE2-Vae@152733a…`).
         public var decoder: String?
         public init(repository: String, revision: String, precision: String? = nil, lora: String? = nil,
-                    loraScale: Double? = nil, decoder: String? = nil) {
+                    loraScale: Double? = nil, decoder: String? = nil, tier: ModelTier? = nil) {
             self.repository = repository
             self.revision = revision
             self.precision = precision
             self.lora = lora
             self.loraScale = loraScale
             self.decoder = decoder
+            self.tier = tier
         }
         enum CodingKeys: String, CodingKey, CaseIterable {
-            case repository, revision, precision, lora, decoder
+            case repository, revision, precision, lora, decoder, tier
             case loraScale = "lora_scale"
         }
     }

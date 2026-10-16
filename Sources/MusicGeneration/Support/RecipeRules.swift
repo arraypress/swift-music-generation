@@ -127,7 +127,7 @@ public enum RecipeRules {
     public static func decoded(_ data: Data) throws(RecipeError) -> SongRecipe { try RecipeJSON.decoded(data, format: format) }
 
     /// `recipe` with one field changed: a request field (`seed`, `request.bpm`),
-    /// `output.format`, `output.sample_rate`, or `model.precision`.
+    /// `output.format`, `output.sample_rate`, `model.precision` or `model.tier`.
     public static func set(_ field: String, _ value: String, in recipe: SongRecipe) throws(RecipeError) -> SongRecipe {
         var recipe = recipe
         let text = value.trimmingCharacters(in: .whitespaces)
@@ -146,6 +146,9 @@ public enum RecipeRules {
         case "model.precision", "precision":
             guard ["float32", "bfloat16"].contains(text) else { throw RecipeError("model.precision is float32 or bfloat16") }
             recipe.model.precision = text
+        case "model.tier", "tier":
+            guard let tier = ModelTier(rawValue: text.lowercased()) else { throw RecipeError("model.tier is full or lite; not \(value)") }
+            recipe.model.tier = tier
         default:
             recipe.request = try set(field, value, in: recipe.request)
         }

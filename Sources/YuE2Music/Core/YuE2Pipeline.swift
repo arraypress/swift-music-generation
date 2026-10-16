@@ -31,12 +31,14 @@ final class YuE2Pipeline {
     static let hop = 1920
     static let halo = 16
 
-    init(folder: URL, decoder: YuE2Decoder) throws(YuE2Error) {
+    /// `bits`: quantise the transformer's layers, embeddings and head at load (the lite tier).
+    init(folder: URL, decoder: YuE2Decoder, bits: Int? = nil) throws(YuE2Error) {
         self.folder = folder
         let transformer = folder.appendingPathComponent(YuE2Model.transformer.folder)
         tokenizer = try Tiktoken(file: transformer.appendingPathComponent("qwen.tiktoken"))
         network = YuE2Network()
         try Self.loadTransformer(network, from: transformer.appendingPathComponent("model.safetensors"))
+        if let bits { Self.quantize(network, bits: bits) }
         _ = try self.decoder(decoder)
     }
 
@@ -54,6 +56,17 @@ final class YuE2Pipeline {
         do {
             try network.update(parameters: ModuleParameters.unflattened(weights), verify: .all)
         } catch { throw .modelMissing("the YuE2 weights do not fit: \(error)") }
+        MLX.eval(network)
+    }
+
+    /// The layers, token embeddings and LM head to `bits` (groups of 64). The time embedder and
+    /// the 64-wide latent projections stay bfloat16: the embedder reads its own weight's type.
+    static func quantize(_ network: YuE2Network, bits: Int) {
+        MLXNN.quantize(model: network, filter: { path, module in
+            guard module is Linear || module is Embedding else { return nil }
+            let kept = path.hasPrefix("model.layers.") || path == "model.embed_tokens" || path == "lm_head"
+            return kept ? (64, bits, .affine) : nil
+        })
         MLX.eval(network)
     }
 

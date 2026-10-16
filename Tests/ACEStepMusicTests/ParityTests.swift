@@ -43,7 +43,7 @@ final class ParityTests: XCTestCase {
     }
 
     static func load() async throws -> (ACEStepPipeline, [String: MLXArray], [String: Any]) {
-        let pipeline = try await ACEStepPipeline(folder: URL(fileURLWithPath: Parity.model!), dtype: .float32, progress: nil)
+        let pipeline = try await ACEStepPipeline(folder: URL(fileURLWithPath: Parity.model!), options: .tier(.full, precision: .float32), progress: nil)
         let folder = URL(fileURLWithPath: Parity.dump!)
         let arrays = try loadArrays(url: folder.appendingPathComponent("ref.safetensors"))
         let json = try JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("ref.json"))) as! [String: Any]

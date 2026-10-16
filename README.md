@@ -52,7 +52,7 @@ and timbre encoders and the FSQ detokenizer, 4.8 GB bf16), `vae` (Oobleck, 337 M
 `ACEStepModel.sha256` lists the large files' checksums. `song` fetches them on first use.
 
 Requirements: macOS 14, Apple silicon, 32 GB of memory at float32 or 24 GB at bfloat16
-(`ACEStepPrecision`).
+(`ACEStepPrecision`) — or **16 GB on the lite tier** (`ModelTier.lite`, below).
 
 ## How the port was checked
 
@@ -130,6 +130,58 @@ expression alternating every added token, and the planner's tokenizer has 65,535
 tokenizer is built without them (codes come back as ids). And the sampling filter
 (log-softmax, top-p over 217k tokens) costs 25 ms a token uncompiled; compiled, as mlx_lm
 compiles it, 2 ms.
+
+## Tiers: full and lite
+
+Each engine loads the same download one of two ways (`ModelTier`): `full` is the parity
+build above; `lite` fits a 16 GB Mac. Nothing extra is downloaded — the tier only changes
+how the files are read. A recipe records its tier (`model.tier`; recipes from before tiers
+ran full), because the two tiers make different audio from the same seed. `TierChoice.auto`
+picks full when the Mac has the full tier's memory and lite otherwise; `song models` says
+which a Mac gets and why.
+
+**ACE-Step lite** (`ACEStepLoadOptions.tier(.lite, …)`): the DiT, text encoder and VAE in
+bfloat16, and the 1.7B planner quantised to 8 bits at load (MLX affine, groups of 64). The
+bars were set before measuring: CLAP text–audio score within 5 % of full, and renders of the
+same plan closer to full than two seeds of full are to each other.
+
+| Tier | Peak memory footprint | 60 s song (warm, quiet Mac) | CLAP vs prompt (12 prompts) | Same plan vs full (mel L1) | Loudness (same plan) | Starts on |
+| --- | --- | --- | --- | --- | --- | --- |
+| full, float32 | 24.1 GB | 34–44 s | 0.297 | — (two seeds of full: 11.5 dB) | −16.3 LUFS | 32 GB |
+| full, bfloat16 | 18.7 GB (90 s song, earlier run) | ≈ float32 | — | — | — | 24 GB |
+| **lite** | **12.5 GB** (11.6 GiB) | **23–27 s** | **0.290 (97.8 %)** | **5.6 dB** | −16.2 LUFS | **16 GB** |
+
+Measured on the M3 Max with `/usr/bin/time -l` (peak memory footprint, model load
+included). Lite's peak is flat from 60 s to 600 s of audio (12.4–12.5 GB) and held with
+MLX's memory limit set to 12 GB, so the footprint is the weights plus one working set, not
+the song's length. CLAP is LAION `larger_clap_general` through `crate`; two seeds of the full
+model differ by about 2 % on it by themselves, and prompts scored against the wrong caption
+average 0.10 on both tiers. The planner samples, so lite writes a different sketch from the
+same seed: tempo matched full on 11 of 12 songs, the key often differs (as it does between
+seeds). Given the same plan, two of six songs rendered within 1.2–1.4 dB mel distance
+(11–14 dB SNR) of full and the rest wandered further — bfloat16 rounding through eight
+steps — but never as far as a new seed. Lite is also faster: bfloat16 halves the bytes the
+DiT and VAE move.
+
+**YuE2 lite** (`YuE2Engine(…, tier: .lite)`): the transformer's 28 layers, token embeddings
+and LM head quantised to 4 bits at load (MLX affine, groups of 64); the time embedder, the
+64-wide latent projections and the decoder stay as shipped. Bars, set first: CLAP within
+5 %, the score's tempo heard in the song as often as on full, lyrics recall within 5 points.
+Four prompts (house 125, trance 138, pop 110 with lyrics, rap 90 with lyrics), seed 42, 30 s
+each, planning full:
+
+| Tier | Peak memory footprint | CLAP vs prompt | Score tempo heard (`muse`) | Lyrics recall (pop, rap) | 30 s song | Starts on |
+| --- | --- | --- | --- | --- | --- | --- |
+| full, bfloat16 | 13.5 GB | 0.214 | 4/4 | 95.5 %, 72.7 % | 89–360 s | 24 GB |
+| **lite, 4-bit** | **8.1 GB** (7.6 GiB) | **0.214** | **4/4** | **100 %, 66.7 %** | 95–363 s | **16 GB** |
+
+Lite planned the same tempo and key as full on three of four scores; rendering full's own
+scores on lite (no planning) heard the same tempo and key on all four (one at half tempo,
+69 for 138). CLAP barely separates these four captions (each clip scores about as well
+against the other genres' captions), so tempo and lyrics carry the judgement here. The time
+is mostly the score (up to 4,096 tokens, capped), so it swings with what the model writes;
+4-bit is not faster here — its matrix multiplies trade bandwidth for dequantising, and the
+acoustic stage is compute-bound. Rap recall is below 100 % on both because 30 s cuts the verse.
 
 ## Every upstream parameter
 
@@ -363,7 +415,7 @@ the Mac awake and in use, so ordinary desktop GPU load ran alongside):
 | Pop (110) | 41 s, ended itself | 108, A major | 108, A major | 96.4 % / 5.5 % | 87 s (0.47×) |
 | Rap (90) | 67 s, ended itself | 90, B minor | 90.9, B minor | 94.6 % / 12.2 % | 116 s (0.58×) |
 
-The score's tempo and key are what you hear, every time. Peak memory footprint 13.9–14.0 GB
+The score's tempo and key are what you hear, every time. Peak memory footprint 13.9–14.0 GB (8.1 GB on the lite tier, above)
 (the process, model load included). Time splits for the 90 s instrumentals: the score 76–85 s
 (4,096 tokens, capped), the song tokens 48–51 s, the acoustic latents 112 s, the decoder 6 s.
 For comparison, on the same Mac: upstream's PyTorch package on MPS made a 16 s clip at 0.32×

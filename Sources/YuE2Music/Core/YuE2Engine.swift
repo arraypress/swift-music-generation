@@ -34,20 +34,46 @@ public actor YuE2Engine {
     private var loadSeconds = 0.0
     private let cancelFlag = OSAllocatedUnfairLock(initialState: false)
 
-    /// The least memory the engine starts on (bfloat16 weights 7.3 GB, peak measured in the README).
+    /// How the transformer loads: bfloat16 as shipped (full) or quantised at load (lite).
+    public nonisolated let tier: ModelTier
+
+    /// Transformer bits on the lite tier (MLX affine, groups of 64); nil keeps bfloat16.
+    public nonisolated let quantizationBits: Int?
+
+    /// The least memory the full tier starts on (bfloat16 weights 7.3 GB, peak measured in the README).
     public static let minimumMemory: UInt64 = 24 << 30
+
+    /// The least memory a tier starts on (peaks measured in the README).
+    public static func minimumMemory(for tier: ModelTier) -> UInt64 {
+        tier == .full ? minimumMemory : 16 << 30
+    }
+
+    /// The transformer's bits at a tier.
+    public static func bits(for tier: ModelTier) -> Int? { tier == .lite ? 4 : nil }
 
     /// - Parameter licence: Must be ``YuE2Licence/version``: naming it is accepting it.
     /// - Throws: ``YuE2Error/licenceNotAccepted(expected:)`` or ``YuE2Error/insufficientMemory(physicalGB:requiredGB:)``.
-    public init(modelDirectory: URL, licence: String,
+    public init(modelDirectory: URL, licence: String, tier: ModelTier = .full,
                 physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory,
                 bufferCacheLimit: Int? = 512 << 20) throws(YuE2Error) {
         guard licence == YuE2Licence.version else { throw .licenceNotAccepted(expected: YuE2Licence.version) }
-        guard physicalMemory >= Self.minimumMemory else {
-            throw .insufficientMemory(physicalGB: Int(physicalMemory >> 30), requiredGB: Int(Self.minimumMemory >> 30))
+        let minimum = Self.minimumMemory(for: tier)
+        guard physicalMemory >= minimum else {
+            throw .insufficientMemory(physicalGB: Int(physicalMemory >> 30), requiredGB: Int(minimum >> 30))
         }
         self.modelDirectory = modelDirectory
         self.bufferCacheLimit = bufferCacheLimit
+        self.tier = tier
+        quantizationBits = Self.bits(for: tier)
+    }
+
+    /// An engine with explicit transformer bits and no memory check: for probes measuring variants.
+    public init(modelDirectory: URL, licence: String, quantizationBits: Int?, bufferCacheLimit: Int? = 512 << 20) throws(YuE2Error) {
+        guard licence == YuE2Licence.version else { throw .licenceNotAccepted(expected: YuE2Licence.version) }
+        self.modelDirectory = modelDirectory
+        self.bufferCacheLimit = bufferCacheLimit
+        self.tier = quantizationBits == nil ? .full : .lite
+        self.quantizationBits = quantizationBits
     }
 
     public var isReady: Bool { pipeline != nil }
@@ -57,7 +83,7 @@ public actor YuE2Engine {
         if let pipeline { _ = try pipeline.decoder(decoder); return }
         if let bufferCacheLimit { MLX.Memory.cacheLimit = bufferCacheLimit }
         let start = Date()
-        pipeline = try YuE2Pipeline(folder: modelDirectory, decoder: decoder)
+        pipeline = try YuE2Pipeline(folder: modelDirectory, decoder: decoder, bits: quantizationBits)
         loadSeconds = Date().timeIntervalSince(start)
     }
 

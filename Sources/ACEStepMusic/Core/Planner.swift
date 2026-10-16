@@ -53,7 +53,8 @@ final class Planner {
     /// `[V]` additive mask: 0 on audio codes and EOS, -inf elsewhere.
     let codesAllowed: MLXArray
 
-    init(folder: URL) async throws(ACEStepError) {
+    /// `bits`: quantise the weights at load (the lite tier); nil keeps them as shipped.
+    init(folder: URL, bits: Int? = nil, groupSize: Int = 64) async throws(ACEStepError) {
         let configURL = folder.appendingPathComponent("config.json")
         let configuration: Qwen3Configuration
         do {
@@ -66,6 +67,7 @@ final class Planner {
             weights = model.sanitize(weights: weights)
             try model.update(parameters: ModuleParameters.unflattened(weights), verify: .all)
         } catch { throw .modelMissing("planner weights do not load: \(error)") }
+        if let bits { MLXNN.quantize(model: model, groupSize: groupSize, bits: bits) }
         MLX.eval(model)
         self.model = model
         let codeIDs: [String: Int]

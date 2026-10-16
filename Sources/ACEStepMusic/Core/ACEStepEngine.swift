@@ -37,27 +37,53 @@ public actor ACEStepEngine {
     /// A LoRA adapter folded into the DiT at load, if any.
     public nonisolated let lora: LoRASpec?
 
+    /// How the models load: ``ModelTier/full`` (parity) or ``ModelTier/lite`` (16 GB Macs).
+    public nonisolated let tier: ModelTier
+
+    /// The exact load settings (from the tier and precision, or given directly).
+    public nonisolated let loadOptions: ACEStepLoadOptions
+
     private var pipeline: ACEStepPipeline?
     private var loadSeconds = 0.0
     private let cancelFlag = OSAllocatedUnfairLock(initialState: false)
 
-    /// The least memory the engine starts on at a precision: float32 peaks near
-    /// 24 GB (measured), bfloat16 near 18 GB.
-    public static func minimumMemory(for precision: ACEStepPrecision) -> UInt64 {
-        precision == .float32 ? 32 << 30 : 24 << 30
+    /// The least memory the engine starts on: float32 peaks near 24 GB
+    /// (measured), bfloat16 near 18 GB; the lite tier fits a 16 GB Mac.
+    public static func minimumMemory(for precision: ACEStepPrecision, tier: ModelTier = .full) -> UInt64 {
+        if tier == .lite { return 16 << 30 }
+        return precision == .float32 ? 32 << 30 : 24 << 30
     }
 
-    public init(modelDirectory: URL, precision: ACEStepPrecision = .float32,
+    /// The tier `auto` resolves to on a Mac with `physicalMemory` bytes: full
+    /// at the requested precision when it fits, else lite.
+    public static func automaticTier(precision: ACEStepPrecision = .float32,
+                                     physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> ModelTier {
+        physicalMemory >= minimumMemory(for: precision) ? .full : .lite
+    }
+
+    public init(modelDirectory: URL, precision: ACEStepPrecision = .float32, tier: ModelTier = .full,
                 physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory,
                 bufferCacheLimit: Int? = 512 << 20, lora: LoRASpec? = nil) throws(ACEStepError) {
-        let minimum = Self.minimumMemory(for: precision)
+        let minimum = Self.minimumMemory(for: precision, tier: tier)
         guard physicalMemory >= minimum else {
             throw .insufficientMemory(physicalGB: Int(physicalMemory >> 30), requiredGB: Int(minimum >> 30))
         }
         self.modelDirectory = modelDirectory
-        self.precision = precision
+        self.precision = tier == .lite ? .bfloat16 : precision
+        self.tier = tier
+        self.loadOptions = .tier(tier, precision: precision)
         self.bufferCacheLimit = bufferCacheLimit
         self.lora = lora
+    }
+
+    /// An engine with explicit load settings and no memory check: for probes measuring variants.
+    public init(modelDirectory: URL, loadOptions: ACEStepLoadOptions, bufferCacheLimit: Int? = 512 << 20) {
+        self.modelDirectory = modelDirectory
+        self.precision = loadOptions.precision
+        self.tier = loadOptions.plannerBits == nil && loadOptions.vaePrecision == .float32 ? .full : .lite
+        self.loadOptions = loadOptions
+        self.bufferCacheLimit = bufferCacheLimit
+        self.lora = nil
     }
 
     public var isReady: Bool { pipeline != nil }
@@ -67,7 +93,7 @@ public actor ACEStepEngine {
         guard pipeline == nil else { return }
         if let bufferCacheLimit { MLX.Memory.cacheLimit = bufferCacheLimit }
         let start = Date()
-        let loaded = try await ACEStepPipeline(folder: modelDirectory, dtype: precision.dtype) { onProgress?($0) }
+        let loaded = try await ACEStepPipeline(folder: modelDirectory, options: loadOptions) { onProgress?($0) }
         if let lora { try LoRAMerge.merge(lora, into: loaded.network.decoder) }
         pipeline = loaded
         loadSeconds = Date().timeIntervalSince(start)

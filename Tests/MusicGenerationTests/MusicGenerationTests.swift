@@ -112,6 +112,33 @@ final class MusicGenerationTests: XCTestCase {
         XCTAssertEqual(changed.output.format, .flac)
     }
 
+    func testRecipeTierRoundTripsAndOldRecipesAreFull() throws {
+        let request = SongRequest(caption: "synthwave", instrumental: true)
+        let lite = SongRecipe(engine: "ace-step-1.5-turbo", model: .init(repository: "r", revision: "v", tier: .lite),
+                              style: nil, request: request, output: .init(format: .wav), provenance: nil)
+        let data = try RecipeRules.encoded(lite)
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains(#""tier" : "lite""#))
+        XCTAssertEqual(try RecipeRules.decoded(data).model.tier, .lite)
+        // A recipe from before tiers has no `tier`: it ran full.
+        let old = SongRecipe(engine: "ace-step-1.5-turbo", model: .init(repository: "r", revision: "v"),
+                             style: nil, request: request, output: .init(format: .wav), provenance: nil)
+        XCTAssertNil(try RecipeRules.decoded(RecipeRules.encoded(old)).model.tier)
+        XCTAssertEqual(try RecipeRules.set("model.tier", "full", in: lite).model.tier, .full)
+        XCTAssertThrowsError(try RecipeRules.set("model.tier", "tiny", in: lite))
+    }
+
+    func testTierChoiceResolves() {
+        let gib: UInt64 = 1 << 30
+        XCTAssertEqual(TierChoice.auto.resolved(physicalMemory: 36 * gib, fullNeeds: 32 * gib), .full)
+        XCTAssertEqual(TierChoice.auto.resolved(physicalMemory: 16 * gib, fullNeeds: 32 * gib), .lite)
+        XCTAssertEqual(TierChoice.lite.resolved(physicalMemory: 64 * gib, fullNeeds: 32 * gib), .lite)
+        XCTAssertEqual(TierChoice.full.resolved(physicalMemory: 8 * gib, fullNeeds: 32 * gib), .full)
+        XCTAssertTrue(TierReason.text(tier: .lite, physicalMemory: 16 * gib, fullNeeds: 32 * gib, liteNeeds: 16 * gib)
+            .contains("lite 16 GB"))
+        XCTAssertTrue(TierReason.text(tier: .lite, physicalMemory: 8 * gib, fullNeeds: 32 * gib, liteNeeds: 16 * gib)
+            .contains("even the lite tier"))
+    }
+
     func testYuE2RecipeFields() throws {
         var r = SongRequest(caption: "pop")
         r = try RecipeRules.set("engine", "yue2", in: r)

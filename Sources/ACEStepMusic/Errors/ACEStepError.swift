@@ -30,7 +30,7 @@ public enum ACEStepError: Error, Sendable, Equatable, LocalizedError {
         case .generationFailed(let detail): "generation failed: \(detail)"
         case .insufficientMemory(let have, let need):
             "ACE-Step needs a Mac with at least \(need) GB of memory at this precision; this one has \(have) GB"
-                + (need > 24 ? " — --precision bfloat16 runs on 24 GB" : "")
+                + (need > 16 ? " — the lite tier (--tier lite) runs on 16 GB" : "")
         case .cancelled: "cancelled"
         }
     }

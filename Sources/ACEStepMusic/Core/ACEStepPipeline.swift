@@ -37,12 +37,16 @@ final class ACEStepPipeline {
     /// `[T, 64]` latents of silence: the timbre reference when none is given, and padding.
     let silence: MLXArray
     let dtype: DType
+    /// The VAE's compute type: float32 on the full tier, bfloat16 on lite.
+    let vaeDType: DType
 
     static let sampleRate = 48_000
     static let hop = 1_920
 
-    init(folder: URL, dtype: DType, progress: ((Double) -> Void)?) async throws(ACEStepError) {
+    init(folder: URL, options: ACEStepLoadOptions, progress: ((Double) -> Void)?) async throws(ACEStepError) {
+        let dtype = options.precision.dtype
         self.dtype = dtype
+        vaeDType = options.vaePrecision.dtype
         let dit = folder.appendingPathComponent("acestep-v15-turbo")
         do {
             configuration = try JSONDecoder().decode(ACEStepConfiguration.self,
@@ -60,11 +64,12 @@ final class ACEStepPipeline {
         } catch { throw .modelMissing("vae/config.json unreadable: \(error)") }
         vae = OobleckVAE(vaeConfiguration)
         try WeightLoading.loadVAE(vae, from: vaeFolder.appendingPathComponent("diffusion_pytorch_model.safetensors"),
-                                  dtype: .float32)
+                                  dtype: options.vaePrecision.dtype)
         progress?(0.55)
         textEncoder = try await TextEncoder(folder: folder.appendingPathComponent("Qwen3-Embedding-0.6B"), dtype: dtype)
         progress?(0.7)
-        planner = try await Planner(folder: folder.appendingPathComponent("acestep-5Hz-lm-1.7B"))
+        planner = try await Planner(folder: folder.appendingPathComponent("acestep-5Hz-lm-1.7B"),
+                                    bits: options.plannerBits, groupSize: options.plannerGroupSize)
         progress?(1)
     }
 
@@ -183,7 +188,7 @@ final class ACEStepPipeline {
     /// discarded, sampled from the posterior with a seeded key (upstream samples unseeded).
     func encode(_ audio: [[Float]], key: MLXArray) -> MLXArray {
         let frames = audio[0].count
-        let nlc = MLX.stacked([MLXArray(audio[0]), MLXArray(audio[1])], axis: -1).expandedDimensions(axis: 0)
+        let nlc = MLX.stacked([MLXArray(audio[0]), MLXArray(audio[1])], axis: -1).expandedDimensions(axis: 0).asType(vaeDType)
         let chunk = Self.sampleRate * 30, overlap = Self.sampleRate * 2
         if frames <= chunk { return vae.encodeSample(nlc, key: key).asType(dtype) }
         let stride = chunk - 2 * overlap
@@ -224,7 +229,7 @@ final class ACEStepPipeline {
     /// Upstream's MLX tiled decode: 512-frame windows, 64 frames of overlap discarded.
     func decode(_ latents: MLXArray, progress: ((Double) -> Void)?) -> [[Float]] {
         let decodeStart = Date()
-        let z = latents.asType(.float32)
+        let z = latents.asType(vaeDType)
         let frames = z.dim(1)
         let vae = self.vae
         // Compiled, as upstream compiles its MLX decode: the Snake activations fuse.
@@ -255,6 +260,7 @@ final class ACEStepPipeline {
             }
             audio = MLX.concatenated(parts, axis: 1)
         }
+        audio = audio.asType(.float32)
         MLX.eval(audio)
         let convertStart = Date()
         defer {
